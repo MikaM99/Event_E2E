@@ -7,4 +7,8 @@ Beginn der MA anhand der Auswahl eines passenden E2E-Modells - Wahl für CIL (co
 - Input: RGB, Fahrzeugzustand, Navigationsbefehl
 - Output: steering, throttle, brake
 - 
-Auswahl FRN als Image Encoder 
+Auswahl FRN als Feature/Image Encoder
+- CIL als E2E-Modell
+- FRN für visuelle Feature-Extraction
+- CIL übernimmt die von FRN erzeugten Features und kombiniert mit Speed oder Steer
+- FRN kann auch Event Daten extrahieren und den Output an CIL kombiniert übergeben
