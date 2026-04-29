@@ -6,32 +6,23 @@ import numpy as np
 import json
 import torch
 
-# import pytorch?
 
-#from carla.driving_benchmark import run_driving_benchmark
-#from carla.driving_benchmark.experiment_suites import CoRL2017
 
 from agents.imitation.imitation_learning import ImitationLearning
 
-#try:
-    #from carla import carla_server_pb2 as carla_protocol
-#except ImportError:
-    #raise RuntimeError(
-        #'cannot import "carla_server_pb2.py", run the protobuf compiler to generate this file')
 
+#Erstellung leerer Tensoren nach Datentyp + Listen zum Sammeln der Rohwerte
 def load_data(data_paths:dict, D:torch.device):
-    # Load Data
-    # "großes" array je datentyp
+   
     images = torch.Tensor().to(D)
     events = torch.Tensor().to(D)
     meta = torch.Tensor().to(D)
     all_speeds = []
     all_steers = []
 
-    # os.path.isdir(path)
+   # Iteration über Datensätze, leeren des GPU Speichers, zurücksetzen der Tensoren für jede Aufnahme
     for key in data_paths:
         data_path = data_paths[key]
-        test = True # Save fisrt recording of each run to test, rest to train
         print(key)
         for folder in os.listdir(data_path):
             torch.cuda.empty_cache()
@@ -43,6 +34,8 @@ def load_data(data_paths:dict, D:torch.device):
                 print(folder_path)
                 for dir in os.listdir(folder_path):
                     #print(dir)
+#Bild laden und in RGB konvertieren, in numpy array wandeln und pixelwerte auf 0,1 normaliesieren
+#Umordnung von h,w,c in c,h,w für pytorch, ertsllen eines tensors
                     if dir == "images":
                         p = os.path.join(folder_path, dir)
                         for file in os.listdir(p):
@@ -60,6 +53,7 @@ def load_data(data_paths:dict, D:torch.device):
                             else:
                                 images = torch.cat((images, torch.Tensor(image).unsqueeze(0).to(D)), dim=0)
                             #print(arr.shape)
+#Event-Daten werden als Bilder geladen, auch in numpy array wandeln und umordnen, tensor erstellen
                     elif dir == "events":
                         p = os.path.join(folder_path, dir)
                         for file in os.listdir(p):
@@ -68,13 +62,13 @@ def load_data(data_paths:dict, D:torch.device):
                             #print(event_path)
                             img = Image.open(event_path).convert("RGB")
                             #print(type(events))
-                            # TODO: sind die events sinnvoll abgespeichert? -> voxel in FRN
                             img = np.array(img)
                             img = np.transpose(img, (2,0,1))
                             if events.shape == 0:
                                 events = torch.Tensor(img).unsqueeze(0).to(D)
                             else:
                                 events = torch.cat((events, torch.Tensor(img).unsqueeze(0).to(D)), dim=0)
+#s_raw.. fahrzeugzustände, Normalisierung ihrer
                     elif dir == "meta":
                         p = os.path.join(folder_path, dir)
                         for file in os.listdir(p):
@@ -92,10 +86,9 @@ def load_data(data_paths:dict, D:torch.device):
                                 a_raw = data["steering_wheel_angle"]
                                 s = (s_raw - speed_min) / (speed_max - speed_min)
                                 a = 2 * (a_raw - steer_min) / (steer_max - steer_min) - 1
-
+#speichern der normalisierten werte, zusammenführen von speed und steer zu einem tensor, input für cil modell
                                 all_speeds.append(s) 
                                 all_steers.append(a)
-                                tmp_array = torch.Tensor ([s, a]).to(D)
                                 tmp_array = torch.Tensor([s, a]).to(D)
                                 if meta.shape[0] == 0:
                                     meta = tmp_array.unsqueeze(0)
@@ -108,7 +101,8 @@ def load_data(data_paths:dict, D:torch.device):
                 #print(range(len(meta)))
                 #for key in meta[50].keys():
                     #print(meta[50][key])
-
+#optional: speichern der geladenen daten auf festplatte für schnelleres laden, aufteilung in train und testdaten, erste aufnahme wird als test verwednet
+#aktuell nicht genutzt weil iuse extracted false, sinnvoll bei größerem datensatz und längerem training
     #for key in dict_images.keys():
             #print(dict_images[key])
         # optional: große arrays mit np.save() als .npy abspeichern
@@ -123,6 +117,7 @@ def load_data(data_paths:dict, D:torch.device):
                     #torch.save(images, f"dataloader/train/images_{name}.pt")
                     #torch.save(meta, f"dataloader/train/meta_{name}.pt")
                     #torch.save(events, f"dataloader/train/events_{name}.pt")
+# ermittlung der min un max speeds und steers für normalisierung
     print("Speed min:", min(all_speeds))
     print("Speed max:", max(all_speeds))
 
@@ -132,7 +127,7 @@ def load_data(data_paths:dict, D:torch.device):
 
     return images, events, meta
 
-
+#KOnfiguration eines Argparsers zu steuerung der experimente, der über cmd benutzt werden kann
 if (__name__ == '__main__'):
     argparser = argparse.ArgumentParser(description=__doc__)
     argparser.add_argument(
@@ -182,7 +177,7 @@ if (__name__ == '__main__'):
     logging.basicConfig(format='%(levelname)s: %(message)s', level=log_level)
 
     #logging.info('listening to server %s:%s', args.host, args.port)
-
+# Verwendete Pfade
     ddd17_paths = {
         "run2": "/home/carlas/Datasets/DDD17/run2",
         "run5": "/home/carlas/Datasets/DDD17/run5",
@@ -190,7 +185,8 @@ if (__name__ == '__main__'):
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     torch.cuda.empty_cache()
-
+#if false: Rohdaten werden neu eingelesen und verwendet
+#if true: Tensoren werden aus dataloader/train geladen
     USE_EXTRACTED = False
 
     if USE_EXTRACTED:
@@ -211,7 +207,7 @@ if (__name__ == '__main__'):
     arr_events = arr_events[:500]
     arr_meta = arr_meta[:500]
 
-        #nochmal normalisieren über nur die  vorgeladene Datem schneller über paper
+   #wurden nur zum testen des modell erstellt     
     #Dummy Daten
     #N = 32
     #arr_images = torch.randn(N, 3, 260, 346).to(device)
@@ -226,7 +222,7 @@ if (__name__ == '__main__'):
     print("Event shape:", arr_events[0].shape)
     print("Meta Beispiel:", arr_meta[0])
     #print(arr_meta) # [0, 0, 0, 0, speed]
-
+#Übergabe der geladenen daten an das imitation learning modell
     agent = ImitationLearning(city_name=args.city_name, avoid_stopping=args.avoid_stopping, raw_data=[arr_images, arr_events, arr_meta])
 
     #corl = CoRL2017(args.city_name)
