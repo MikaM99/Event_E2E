@@ -8,17 +8,14 @@ import scipy
 import torch
 import numpy as np
 
-#slim = tf.contrib.slim
 
-#from carla.agent import Agent
-#from carla.carla_server_pb2 import Control
-#from agents.imitation.imitation_learning_network import load_imitation_learning_network
 from agents.imitation.pytorch_imitation_learning_network import Mymodel
 
 from torch.utils.data import DataLoader
 
 from torch.utils.data import Dataset
 
+#speichert die drei datentypen, gibt die anzahl der samplesim datensatz zurück und gibt komplettes traingsbeispiel zurück
 class DDD17Dataset(Dataset):
 
     def __init__(self, images, events, meta):
@@ -35,12 +32,8 @@ class DDD17Dataset(Dataset):
         target = self.meta[idx].float()
         return image, event, target
 
-# CARLA Server
-# Terminal mit conda E2E
-# go to /home/carlas/Simulators/CARLA_0.9.16
-# ./CarlaUE4.sh
-
-
+#Erstellung des Modells das entweder cil oder frn pfad verwendet, training mit adam optimizer mse loss
+#die daten weerden in ein dataset überführt, asnchließend wird data loader erstellt, der die daten in batches für training bereitstellt
 class ImitationLearning():#Agent):
 
     def __init__(self, city_name, avoid_stopping, raw_data, memory_fraction=0.25, image_cut=[115, 510]):
@@ -54,7 +47,7 @@ class ImitationLearning():#Agent):
 
         self._image_size = (260, 346, 3)
 
-
+#lediglich zur modellerstellung
         #self._input_images = torch.Tensor(raw_data[0]).float().unsqueeze(0).to(device) 
         #in load data mit übernehmen
         #print(type(raw_data))
@@ -88,7 +81,7 @@ class ImitationLearning():#Agent):
         # wird dann in train und test jeweils aufgerufen 
         self.train(raw_data, device, 5)
 
-
+#lädt gespeicherte checkpoints
     def load_model(self):
 
         #variables_to_restore = tf.global_variables()
@@ -104,12 +97,7 @@ class ImitationLearning():#Agent):
         epoch = checkpoint['epoch']
         loss = checkpoint['loss']
 
-        #ckpt = tf.train.get_checkpoint_state(self._models_path)
-        #if ckpt:
-        #    print('Restoring from ', ckpt.model_checkpoint_path)
-        #    saver.restore(self._sess, ckpt.model_checkpoint_path)
-        #else:
-        #    ckpt = 0
+    
 
         return checkpoint
 
@@ -126,7 +114,8 @@ class ImitationLearning():#Agent):
         #control["speed"] = predicted_speed
 
         #return control
-    
+    #setzt modell in trainigsmodus, initialisiert besten loss wert, schwellwert ab dem ein checkpoint gespeichert wird, avg loss pro epoche,  
+    #eigentliches training über mehrere epochen, backpropagation, speichern wenn loss unter schwellwert
     def train(self, raw_data, device, num_epochs=1):
         self.model.train()
         #for in_image, in_data in zip(raw_data[0][:10], raw_data[2][:10]): # schneller alternative zu zip
