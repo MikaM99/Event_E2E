@@ -1,0 +1,237 @@
+import argparse
+import logging
+import os
+from PIL import Image
+import numpy as np
+import json
+import torch
+
+# import pytorch?
+
+#from carla.driving_benchmark import run_driving_benchmark
+#from carla.driving_benchmark.experiment_suites import CoRL2017
+
+from agents.imitation.imitation_learning import ImitationLearning
+
+#try:
+    #from carla import carla_server_pb2 as carla_protocol
+#except ImportError:
+    #raise RuntimeError(
+        #'cannot import "carla_server_pb2.py", run the protobuf compiler to generate this file')
+
+def load_data(data_paths:dict, D:torch.device):
+    # Load Data
+    # "großes" array je datentyp
+    images = torch.Tensor().to(D)
+    events = torch.Tensor().to(D)
+    meta = torch.Tensor().to(D)
+    all_speeds = []
+    all_steers = []
+
+    # os.path.isdir(path)
+    for key in data_paths:
+        data_path = data_paths[key]
+        test = True # Save fisrt recording of each run to test, rest to train
+        print(key)
+        for folder in os.listdir(data_path):
+            torch.cuda.empty_cache()
+            folder_path = os.path.join(data_path, folder)
+            if os.path.isdir(folder_path) and "_export" in folder:
+                images = torch.Tensor().to(D)
+                events = torch.Tensor().to(D)
+                meta = torch.Tensor().to(D)
+                print(folder_path)
+                for dir in os.listdir(folder_path):
+                    #print(dir)
+                    if dir == "images":
+                        p = os.path.join(folder_path, dir)
+                        for file in os.listdir(p):
+                            #print(file)
+                            image_path = os.path.join(p, file)
+                            #print(image_path)
+                            image = Image.open(image_path).convert("RGB")
+                            #print(type(image))
+                            image = np.array(image)
+                            image = image / 255.0
+                            #arr=arr.reshape #stellen anpassen#chat swapaxes
+                            image = np.transpose(image, (2,0,1))
+                            if images.shape == 0:
+                                images = torch.Tensor(image).unsqueeze(0).to(D)
+                            else:
+                                images = torch.cat((images, torch.Tensor(image).unsqueeze(0).to(D)), dim=0)
+                            #print(arr.shape)
+                    elif dir == "events":
+                        p = os.path.join(folder_path, dir)
+                        for file in os.listdir(p):
+                            #print(file)
+                            event_path = os.path.join(p, file)
+                            #print(event_path)
+                            img = Image.open(event_path).convert("RGB")
+                            #print(type(events))
+                            # TODO: sind die events sinnvoll abgespeichert? -> voxel in FRN
+                            img = np.array(img)
+                            img = np.transpose(img, (2,0,1))
+                            if events.shape == 0:
+                                events = torch.Tensor(img).unsqueeze(0).to(D)
+                            else:
+                                events = torch.cat((events, torch.Tensor(img).unsqueeze(0).to(D)), dim=0)
+                    elif dir == "meta":
+                        p = os.path.join(folder_path, dir)
+                        for file in os.listdir(p):
+                            meta_path = os.path.join(p, file)
+                            # Ergebnis: [0, 0, 0, 0, raw_data[2]["vehicle_speed"]] <- für jedes element in raw_data[2]
+                            with open(meta_path) as json_file:
+                                data = json.load(json_file) # data ist ein dict
+                                #s = data["vehicle_speed"] 
+                                #a = data["steering_wheel_angle"] 
+                                speed_min = 0.0
+                                speed_max = 62
+                                steer_min = -500
+                                steer_max = 500
+                                s_raw = data["vehicle_speed"]
+                                a_raw = data["steering_wheel_angle"]
+                                s = (s_raw - speed_min) / (speed_max - speed_min)
+                                a = 2 * (a_raw - steer_min) / (steer_max - steer_min) - 1
+
+                                all_speeds.append(s) 
+                                all_steers.append(a)
+                                tmp_array = torch.Tensor ([s, a]).to(D)
+                                tmp_array = torch.Tensor([s, a]).to(D)
+                                if meta.shape[0] == 0:
+                                    meta = tmp_array.unsqueeze(0)
+                                    #print(meta, meta.shape)
+                                else:
+                                    meta = torch.cat((meta, tmp_array.unsqueeze(0)), dim=0)
+                                    #print(meta, meta.shape)
+                        
+                #print(len(images), len(events), len(meta))
+                #print(range(len(meta)))
+                #for key in meta[50].keys():
+                    #print(meta[50][key])
+
+    #for key in dict_images.keys():
+            #print(dict_images[key])
+        # optional: große arrays mit np.save() als .npy abspeichern
+
+                #name = folder.split("_")[0]
+                #if test:
+                    #torch.save(images, f"dataloader/test/images_{name}.pt")
+                    #torch.save(meta, f"dataloader/test/meta_{name}.pt")
+                    #torch.save(events, f"dataloader/test/events_{name}.pt")
+                    #test = False
+                #else:
+                    #torch.save(images, f"dataloader/train/images_{name}.pt")
+                    #torch.save(meta, f"dataloader/train/meta_{name}.pt")
+                    #torch.save(events, f"dataloader/train/events_{name}.pt")
+    print("Speed min:", min(all_speeds))
+    print("Speed max:", max(all_speeds))
+
+    print("Steer min:", min(all_steers))
+    print("Steer max:", max(all_steers))
+    #hier normalisieren
+
+    return images, events, meta
+
+
+if (__name__ == '__main__'):
+    argparser = argparse.ArgumentParser(description=__doc__)
+    argparser.add_argument(
+        '-v', '--verbose',
+        action='store_true',
+        dest='debug',
+        help='print debug information')
+    argparser.add_argument(
+        '--host',
+        metavar='H',
+        default='localhost',
+        help='IP of the host server (default: localhost)')
+    argparser.add_argument(
+        '-p', '--port',
+        metavar='P',
+        default=2000,
+        type=int,
+        help='TCP port to listen to (default: 2000)')
+    argparser.add_argument(
+        '-c', '--city-name',
+        metavar='C',
+        default='Town01',
+        help='The town that is going to be used on benchmark'
+             + '(needs to match active town in server, options: Town01 or Town02)')
+    argparser.add_argument(
+        '-n', '--log_name',
+        metavar='T',
+        default='test',
+        help='The name of the log file to be created by the scripts'
+    )
+
+    argparser.add_argument(
+        '--avoid-stopping',
+        default=True,
+        action='store_false',
+        help=' Uses the speed prediction branch to avoid unwanted agent stops'
+    )
+    argparser.add_argument(
+        '--continue-experiment',
+        action='store_true',
+        help='If you want to continue the experiment with the given log name'
+    )
+
+    args = argparser.parse_args()
+
+    log_level = logging.DEBUG if args.debug else logging.INFO
+    logging.basicConfig(format='%(levelname)s: %(message)s', level=log_level)
+
+    #logging.info('listening to server %s:%s', args.host, args.port)
+
+    ddd17_paths = {
+        "run2": "/home/carlas/Datasets/DDD17/run2",
+        "run5": "/home/carlas/Datasets/DDD17/run5",
+    }
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    torch.cuda.empty_cache()
+
+    USE_EXTRACTED = False
+
+    if USE_EXTRACTED:
+        arr_images, arr_events, arr_meta = torch.Tensor().to(device), torch.Tensor().to(device), torch.Tensor().to(device)
+        for file in os.listdir("dataloader/train"):
+            if "images" in file:
+                torch.cuda.empty_cache()
+                name = file.split("_")[1]
+                print(name)
+                imgs, evs, metas = torch.load(f"dataloader/train/images_{name}"), torch.load(f"dataloader/train/events_{name}"), torch.load(f"dataloader/train/meta_{name}")
+                arr_images = torch.cat((arr_images, imgs))
+                arr_events = torch.cat((arr_events, evs))
+                arr_meta = torch.cat((arr_meta, metas))
+    else:
+        arr_images, arr_events, arr_meta = load_data(ddd17_paths, device) # TODO: die einzelnen daten ausgeben
+        
+    arr_images = arr_images[:500]
+    arr_events = arr_events[:500]
+    arr_meta = arr_meta[:500]
+
+        #nochmal normalisieren über nur die  vorgeladene Datem schneller über paper
+    #Dummy Daten
+    #N = 32
+    #arr_images = torch.randn(N, 3, 260, 346).to(device)
+    #arr_events = torch.randn(N, 3, 260, 346).to(device)
+    #arr_meta= torch.randn(N, 2).to(device)
+
+    print("Images:", arr_images.shape)
+    print("Events:", arr_events.shape)
+    print("Meta:", arr_meta.shape)
+
+    print("Image shape:", arr_images[0].shape)
+    print("Event shape:", arr_events[0].shape)
+    print("Meta Beispiel:", arr_meta[0])
+    #print(arr_meta) # [0, 0, 0, 0, speed]
+
+    agent = ImitationLearning(city_name=args.city_name, avoid_stopping=args.avoid_stopping, raw_data=[arr_images, arr_events, arr_meta])
+
+    #corl = CoRL2017(args.city_name)
+
+    # Now actually run the driving_benchmark
+    #run_driving_benchmark(agent, corl, args.city_name,
+    #                      args.log_name, args.continue_experiment,
+    #                      args.host, args.port)
