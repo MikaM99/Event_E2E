@@ -1,6 +1,7 @@
 from __future__ import print_function
 
 import os
+import glob
 
 import scipy
 
@@ -8,6 +9,7 @@ import scipy
 import torch
 import numpy as np
 
+import matplotlib.pyplot as plt
 #slim = tf.contrib.slim
 
 #from carla.agent import Agent
@@ -71,21 +73,30 @@ class ImitationLearning():#Agent):
         #                                                           self._image_size, self._dout)
 
 
-        self.USE_FRN = True                               
+        self.USE_FRN = True    
+        print("USE_FRN =", self.USE_FRN)                         
                                            #####Modell hier wählen
-        if self.USE_FRN:                                  
-            CHECKPOINT_PATH = "/home/carlas/Experiments/event-e2e/CIL/agents/imitation/model/best_model_epoch_8.pth"      #cil/frn unterscheidung
-        else: 
-            CHECKPOINT_PATH = "/home/carlas/Experiments/event-e2e/CIL/agents/imitation/model/best_cil_epoch_9.pth"
+        #if self.USE_FRN:                                  
+            #CHECKPOINT_PATH = "/home/carlas/Experiments/event-e2e/CIL/agents/imitation/model/best_model_epoch_8.pth"      #cil/frn unterscheidung
+        #else: 
+            #CHECKPOINT_PATH = "/home/carlas/Experiments/event-e2e/CIL/agents/imitation/model/best_cil_epoch_9.pth"
+
+        MODEL_DIR = "/home/carlas/Experiments/event-e2e/CIL/agents/imitation/model"
+        if self.USE_FRN:
+            files = glob.glob(os.path.join(MODEL_DIR, "best_model_epoch_*.pth"))
+        else:
+            files = glob.glob(os.path.join(MODEL_DIR, "best_cil_epoch_*.pth"))
+        CHECKPOINT_PATH = max(files, key=os.path.getmtime) if files else None
+
         self.model = Mymodel(image_shape=self._image_size, Device=device, use_fusion=self.USE_FRN)
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-4) #geändert
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-5) #geändert                                    ###lr anpassen
         self.criterion = torch.nn.MSELoss()
         self.dataset = DDD17Dataset (raw_data[0], raw_data[1], raw_data[2])
         self.dataloader = DataLoader(self.dataset, batch_size=2, shuffle=True, num_workers=0)  #######hier batch size verstellen
         sample = self.dataset[0]
         print("dataset sample len:", len(sample))
         print("dataset sample types:", type(sample), type(sample[0]), type(sample[1]))
-        import os
+
         dir_path = os.path.dirname(__file__)
 
         self._models_path = dir_path + '/model/'
@@ -94,8 +105,21 @@ class ImitationLearning():#Agent):
         # wird dann in train und test jeweils aufgerufen 
         checkpoint_loss = float("inf")
         checkpoint_epoch = 0
-        checkpoint_epoch, checkpoint_loss = self.load_model(CHECKPOINT_PATH)
-        self.train(raw_data, device, 10, checkpoint_epoch, checkpoint_loss)                          ######hier Epochennummer ändern
+        print("CHECKPOINT_PATH:", CHECKPOINT_PATH)
+        print("exists:", os.path.exists(CHECKPOINT_PATH))
+        #if os.path.exists(CHECKPOINT_PATH):
+            #checkpoint_epoch, checkpoint_loss = self.load_model(CHECKPOINT_PATH)
+            #print("Checkpoint loaded")
+        #else:
+            #print("No checkpoint found — starting fresh")
+        #checkpoint_epoch, checkpoint_loss = self.load_model(CHECKPOINT_PATH)
+        if CHECKPOINT_PATH and os.path.exists(CHECKPOINT_PATH):
+            print("Loading:", CHECKPOINT_PATH)
+            checkpoint_epoch, checkpoint_loss = self.load_model(CHECKPOINT_PATH)
+        else:
+            print("No checkpoint found — starting fresh")
+        
+        self.train(raw_data, device, 5, checkpoint_epoch, checkpoint_loss)                          ######hier Epochennummer ändern
 
 
     def load_model(self, models_path):
@@ -164,20 +188,47 @@ class ImitationLearning():#Agent):
 
                 
                 #print(targets.shape)
+                #speed_input = targets[:, 0].unsqueeze(1)
+                #steer_target = targets[:, 1].unsqueeze(1)
+                #output = self.model(images, speed_input, events)
+                #print("output", output, "steer_target", steer_target)
+                #loss = self.criterion(output, steer_target)
+                #print("before:", self.model.fcs[0].weight[0,0].item())
+                #print("output:", output[:5].detach().cpu().view(-1))
+                #print("target:", steer_target[:5].detach().cpu().view(-1))
+                #loss.backward()
+                #print("grad norm", self.model.fcs[0].weight.grad.norm().item())
+                #self.optimizer.step()
+                #self.optimizer.zero_grad()
+                #print("after:", self.model.fcs[0].weight[0,0].item())
+                self.optimizer.zero_grad()
+
                 speed_input = targets[:, 0].unsqueeze(1)
+
                 steer_target = targets[:, 1].unsqueeze(1)
+
                 output = self.model(images, speed_input, events)
-                print("output", output, "steer_target", steer_target)
+
                 loss = self.criterion(output, steer_target)
-                print("before:", self.model.fcs[0].weight[0,0].item())
                 print("output:", output[:5].detach().cpu().view(-1))
                 print("target:", steer_target[:5].detach().cpu().view(-1))
+                print("output requires_grad:", output.requires_grad)
+                print("loss requires_grad:", loss.requires_grad)
+                old = self.model.fcs[0].weight.detach().clone()
+
+                print("before:", self.model.fcs[0].weight[0,0].item())
+
                 loss.backward()
-                print("grad norm", self.model.fcs[0].weight.grad.norm().item())
+
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+
+                print("grad norm:", self.model.fcs[0].weight.grad.norm().item())
+
                 self.optimizer.step()
-                self.optimizer.zero_grad()
+                diff = (self.model.fcs[0].weight.detach() - old).abs().sum().item()
+                print("weight diff:", diff)
                 print("after:", self.model.fcs[0].weight[0,0].item())
-                
+                                
 
                 epoch_loss += loss.item()
 
@@ -204,6 +255,14 @@ class ImitationLearning():#Agent):
                     print("Checkpoint saved:", checkpoint_path)
         print("All epoch losses:", epoch_losses)# als array machen nicht als zahl
         print("best_loss", best_loss)
+
+        epochs = range(1, len(epoch_losses)+1)
+        plt.plot(epochs, epoch_losses, marker='o')
+        plt.xlabel("Epoch")
+        plt.ylabel("Loss")
+        plt.title("Training Loss over Epochs")
+        plt.grid(True)
+        plt.show()
         
 
     def test(self):
@@ -212,6 +271,5 @@ class ImitationLearning():#Agent):
         # mit Ground truth
         #output = self.model(images, events, meta_input)   xxx
         pass
-
 
 
