@@ -180,6 +180,8 @@ class Mymodel(torch.nn.Module): #geändert
             x = torch.flatten(x, 1)
             print("CIL flatten shape:", x.shape)
 
+            print("flatten requires_grad:", x.requires_grad)
+            print("flatten mean/std:", x.mean().item(), x.std().item())
         #if self.use_fusion:
             #x_rgb = input_image
             #x_evt = input_event
@@ -202,6 +204,8 @@ class Mymodel(torch.nn.Module): #geändert
         for i in range(2):
             x = self.fc_block(x, i)
 
+        print("after fc0 requires_grad:", x.requires_grad)
+        print("after fc0 mean/std:", x.mean().item(), x.std().item())
         """Process Control"""
 
         """ Speed (measurements)"""
@@ -223,13 +227,16 @@ class Mymodel(torch.nn.Module): #geändert
         """Start BRANCHING"""
         branch_output = self.fc_block(j, 4)
         branch_output = self.fc_block(branch_output, 5)
-        branch_output = self.fc_block(branch_output, 6) # nur noch steer ausgeben!
+        branch_output = self.fcs[6](branch_output) 
 
 
         #print(branch_output, torch.squeeze(branch_output, 0))
         return branch_output
 
 # end pytorch
+
+
+
 
 
 
