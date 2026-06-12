@@ -89,10 +89,10 @@ class ImitationLearning():#Agent):
         CHECKPOINT_PATH = max(files, key=os.path.getmtime) if files else None
 
         self.model = Mymodel(image_shape=self._image_size, Device=device, use_fusion=self.USE_FRN)
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-5) #geändert                                    ###lr anpassen
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=5e-6) #geändert                                    ###lr anpassen
         self.criterion = torch.nn.MSELoss()
         self.dataset = DDD17Dataset (raw_data[0], raw_data[1], raw_data[2])
-        self.dataloader = DataLoader(self.dataset, batch_size=2, shuffle=True, num_workers=0)  #######hier batch size verstellen
+        self.dataloader = DataLoader(self.dataset, batch_size=8, shuffle=True, num_workers=0)  #######hier batch size verstellen
         sample = self.dataset[0]
         print("dataset sample len:", len(sample))
         print("dataset sample types:", type(sample), type(sample[0]), type(sample[1]))
@@ -112,14 +112,24 @@ class ImitationLearning():#Agent):
             #print("Checkpoint loaded")
         #else:
             #print("No checkpoint found — starting fresh")
+
+        #mit checkpoint
+
         #checkpoint_epoch, checkpoint_loss = self.load_model(CHECKPOINT_PATH)
-        if CHECKPOINT_PATH and os.path.exists(CHECKPOINT_PATH):
-            print("Loading:", CHECKPOINT_PATH)
-            checkpoint_epoch, checkpoint_loss = self.load_model(CHECKPOINT_PATH)
-        else:
-            print("No checkpoint found — starting fresh")
+        #if CHECKPOINT_PATH and os.path.exists(CHECKPOINT_PATH):
+            #print("Loading:", CHECKPOINT_PATH)
+            #checkpoint_epoch, checkpoint_loss = self.load_model(CHECKPOINT_PATH)
+        #else:
+            #print("No checkpoint found — starting fresh")
+
+
+        #ohne checkpoint
+        checkpoint_epoch = 0                                                                        ###### mit/ohne checkpoint
+        checkpoint_loss = float("inf")
+        print("start ohne checkpoint laden")
         
         self.train(raw_data, device, 5, checkpoint_epoch, checkpoint_loss)                          ######hier Epochennummer ändern
+        self.test(device)
 
 
     def load_model(self, models_path):
@@ -202,11 +212,8 @@ class ImitationLearning():#Agent):
                 #self.optimizer.zero_grad()
                 #print("after:", self.model.fcs[0].weight[0,0].item())
                 self.optimizer.zero_grad()
-
                 speed_input = targets[:, 0].unsqueeze(1)
-
                 steer_target = targets[:, 1].unsqueeze(1)
-
                 output = self.model(images, speed_input, events)
 
                 loss = self.criterion(output, steer_target)
@@ -262,14 +269,69 @@ class ImitationLearning():#Agent):
         plt.ylabel("Loss")
         plt.title("Training Loss over Epochs")
         plt.grid(True)
+        plt.ylim(0, 0.15)
         plt.show()
         
 
-    def test(self):
+   #def test(self):
         #output = self.model(image, target)
         # criterion / auswertfunktion?
         # mit Ground truth
         #output = self.model(images, events, meta_input)   xxx
-        pass
+    def test(self, device):
+        results = []
+        self.model.eval()
 
+        total_mse = 0.0
+        total_mae = 0.0
+        num_batches = 0
+
+        with torch.no_grad():
+            for images, events, targets in self.dataloader:
+                images = images.to(device)
+                events = events.to(device)
+                targets = targets.to(device)
+
+                speed_input = targets[:, 0].unsqueeze(1)
+                steer_target = targets[:, 1].unsqueeze(1)
+
+                output = self.model(images, speed_input, events)
+
+                for gt, pred in zip(steer_target, output):
+                    results.append({
+                        "ground_truth": gt.item(),
+                        "prediction": pred.item(),
+                        "error": abs(pred.item() - gt.item())
+                    })
+
+                mse = torch.mean((output - steer_target) ** 2)
+                mae = torch.mean(torch.abs(output - steer_target))
+
+                total_mse += mse.item()
+                total_mae += mae.item()
+                num_batches += 1
+
+        avg_mse = total_mse / num_batches
+        avg_mae = total_mae / num_batches
+        rmse = avg_mse ** 0.5
+
+        print("First 10 predictions:")
+        for i, r in enumerate(results[:10]):
+            print(
+                i,
+                "GT:", round(r["ground_truth"], 4),
+                "Pred:", round(r["prediction"], 4),
+                "Error:", round(r["error"], 4)
+            )
+
+        print("Test MSE:", avg_mse)
+        print("Test MAE:", avg_mae)
+        print("Test RMSE:", rmse)
+
+        self.model.train()
+        return avg_mse, avg_mae, rmse, results
+    #tatsächliche Vorhersage ausgeben lassen in tabelle bei bestimmten daten
+    #dataloader test 3x3 recording durchlaufen lassen
+    #quasi dummy daten nochmal testen mit bildern drin, events auf 0, oder andersrum
+    pass
 
