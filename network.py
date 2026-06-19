@@ -170,6 +170,7 @@ class Mymodel(torch.nn.Module): #geändert
             #print("FRN requires_grad:", x.requires_grad)
             #print("FRN mean/std:", x.mean().item(), x.std().item())
             x = x[-1]  
+            # mit allen features, nicht nur dem letzten, evtl als feature vektor zusammenfügen, ggf. grösse vom ersten fc layer
             x = torch.flatten(x, 1)
             print("FRN output type:", type(x))
         else:
