@@ -27,6 +27,7 @@ class DDD17Dataset(Dataset):
         self.images = images
         self.events = events
         self.meta = meta
+        
 
     def __len__(self):
         return len(self.images)
@@ -35,6 +36,7 @@ class DDD17Dataset(Dataset):
         image = self.images[idx].float()
         event = self.events[idx].float()
         target = self.meta[idx].float()
+          
         return image, event, target
 
 # CARLA Server
@@ -73,7 +75,7 @@ class ImitationLearning():#Agent):
         #                                                           self._image_size, self._dout)
 
 
-        self.USE_FRN = True    
+        self.USE_FRN = True   
         print("USE_FRN =", self.USE_FRN)                         
                                            #####Modell hier wählen
         #if self.USE_FRN:                                  
@@ -92,7 +94,14 @@ class ImitationLearning():#Agent):
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=5e-6) #geändert                                    ###lr anpassen
         self.criterion = torch.nn.MSELoss()
         self.dataset = DDD17Dataset (raw_data[0], raw_data[1], raw_data[2])
-        self.dataloader = DataLoader(self.dataset, batch_size=8, shuffle=True, num_workers=0)  #######hier batch size verstellen
+        self.dataloader = DataLoader(self.dataset, batch_size=1, shuffle=True, num_workers=0)  #######hier batch size verstellen
+        self.dataset_test = DDD17Dataset(raw_data[3], raw_data[4], raw_data[5])
+        self.dataloader_test = DataLoader(
+            self.dataset_test,
+            batch_size=1,
+            shuffle=False,
+            num_workers=0
+        )
         sample = self.dataset[0]
         print("dataset sample len:", len(sample))
         print("dataset sample types:", type(sample), type(sample[0]), type(sample[1]))
@@ -128,7 +137,7 @@ class ImitationLearning():#Agent):
         checkpoint_loss = float("inf")
         print("start ohne checkpoint laden")
         
-        self.train(raw_data, device, 5, checkpoint_epoch, checkpoint_loss)                          ######hier Epochennummer ändern
+        self.train(raw_data, device, 2, checkpoint_epoch, checkpoint_loss)                          ######hier Epochennummer ändern
         self.test(device)
 
 
@@ -278,7 +287,7 @@ class ImitationLearning():#Agent):
         # criterion / auswertfunktion?
         # mit Ground truth
         #output = self.model(images, events, meta_input)   xxx
-    def test(self, device):
+    def test(self, device, zero_events=True):
         results = []
         self.model.eval()
 
@@ -287,7 +296,7 @@ class ImitationLearning():#Agent):
         num_batches = 0
 
         with torch.no_grad():
-            for images, events, targets in self.dataloader:
+            for images, events, targets in self.dataloader_test:
                 images = images.to(device)
                 events = events.to(device)
                 targets = targets.to(device)
@@ -295,13 +304,16 @@ class ImitationLearning():#Agent):
                 speed_input = targets[:, 0].unsqueeze(1)
                 steer_target = targets[:, 1].unsqueeze(1)
 
+                if zero_events:
+                    events = torch.zeros_like(events)
+
                 output = self.model(images, speed_input, events)
 
                 for gt, pred in zip(steer_target, output):
                     results.append({
                         "ground_truth": gt.item(),
                         "prediction": pred.item(),
-                        "error": abs(pred.item() - gt.item())
+                        "error": abs(pred.item() - gt.item()),
                     })
 
                 mse = torch.mean((output - steer_target) ** 2)
@@ -321,12 +333,14 @@ class ImitationLearning():#Agent):
                 i,
                 "GT:", round(r["ground_truth"], 4),
                 "Pred:", round(r["prediction"], 4),
-                "Error:", round(r["error"], 4)
+                "Error:", round(r["error"], 4),
+
             )
 
         print("Test MSE:", avg_mse)
         print("Test MAE:", avg_mae)
         print("Test RMSE:", rmse)
+        
 
         self.model.train()
         return avg_mse, avg_mae, rmse, results
@@ -334,4 +348,3 @@ class ImitationLearning():#Agent):
     #dataloader test 3x3 recording durchlaufen lassen
     #quasi dummy daten nochmal testen mit bildern drin, events auf 0, oder andersrum
     pass
-
