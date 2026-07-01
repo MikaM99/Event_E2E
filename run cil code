@@ -22,18 +22,23 @@ from agents.imitation.imitation_learning import ImitationLearning
 def load_data(data_paths:dict, D:torch.device):
     # Load Data
     # "großes" array je datentyp
-    images = torch.Tensor().to(D)
-    events = torch.Tensor().to(D)
-    meta = torch.Tensor().to(D)
+    images_train = torch.Tensor().to(D)
+    events_train = torch.Tensor().to(D)
+    meta_train = torch.Tensor().to(D)
+    # "großes" array je datentyp
+    images_test = torch.Tensor().to(D)
+    events_test = torch.Tensor().to(D)
+    meta_test = torch.Tensor().to(D)
     all_speeds = []
     all_steers = []
+    
 
     # os.path.isdir(path)
     for key in data_paths:
         data_path = data_paths[key]
-        test = True # Save fisrt recording of each run to test, rest to train
+        test = True 
         print(key)
-        for folder in os.listdir(data_path):
+        for folder in sorted(os.listdir(data_path)):
             torch.cuda.empty_cache()
             folder_path = os.path.join(data_path, folder)
             if os.path.isdir(folder_path) and "_export" in folder:
@@ -58,7 +63,7 @@ def load_data(data_paths:dict, D:torch.device):
                             #arr=arr.reshape #stellen anpassen#chat swapaxes
                             #image = np.transpose(image, (2,)
                             #print(image[0,:,:]== image[1,:,:],image[2,:,:]== image[1,:,:])
-                            if images.shape == 0:
+                            if images.numel() == 0:
                                 images = torch.Tensor(image).unsqueeze(0).to(D)
                             else:
                                 images = torch.cat((images, torch.Tensor(image).unsqueeze(0).to(D)), dim=0)
@@ -76,7 +81,7 @@ def load_data(data_paths:dict, D:torch.device):
                             img = np.array(img)
                             img = np.expand_dims(img, axis=0)
                             #print(img[0,:,:]== img[1,:,:],img[2,:,:]== img[1,:,:])
-                            if events.shape == 0:
+                            if events.numel() == 0:
                                 events = torch.Tensor(img).unsqueeze(0).to(D)
                             else:
                                 events = torch.cat((events, torch.Tensor(img).unsqueeze(0).to(D)), dim=0)
@@ -108,8 +113,17 @@ def load_data(data_paths:dict, D:torch.device):
                                 else:
                                     meta = torch.cat((meta, tmp_array.unsqueeze(0)), dim=0)
                                     #print(meta, meta.shape)
-                        
+                if test:
+                    images_test = torch.cat((images_test, images), dim=0)
+                    events_test = torch.cat((events_test, events), dim=0)
+                    meta_test = torch.cat((meta_test, meta), dim=0)
+                    test = False
+                else:
+                    images_train = torch.cat((images_train, images), dim=0)
+                    events_train = torch.cat((events_train, events), dim=0)
+                    meta_train = torch.cat((meta_train, meta), dim=0)                
                 #print(len(images), len(events), len(meta))
+
                 #print(range(len(meta)))
                 #for key in meta[50].keys():
                     #print(meta[50][key])
@@ -135,8 +149,7 @@ def load_data(data_paths:dict, D:torch.device):
     print("Steer max:", max(all_steers))
     #hier normalisieren
 
-    return images, events, meta
-
+    return images_train, events_train, meta_train, images_test, events_test, meta_test
 
 if (__name__ == '__main__'):
     argparser = argparse.ArgumentParser(description=__doc__)
@@ -210,16 +223,26 @@ if (__name__ == '__main__'):
                 arr_events = torch.cat((arr_events, evs))
                 arr_meta = torch.cat((arr_meta, metas))
     else:
-        arr_images, arr_events, arr_meta = load_data(ddd17_paths, device) # TODO: die einzelnen daten ausgeben
+        arr_images, arr_events, arr_meta, arr_images_test,arr_events_test, arr_meta_test = load_data(ddd17_paths, device) # TODO: die einzelnen daten ausgeben
         
+    cpu_device = torch.device("cpu")
     arr_images = arr_images[:500]
     arr_events = arr_events[:500]
     arr_meta = arr_meta[:500]
+    arr_images_test = arr_images_test[:500]
+    arr_events_test = arr_events_test[:500]
+    arr_meta_test = arr_meta_test[:500]
+    print("Train Images:", arr_images.shape)
+    print("Train Events:", arr_events.shape)
+    print("Train Meta:", arr_meta.shape)
+    print("Test Images:", arr_images_test.shape)
+    print("Test Events:", arr_events_test.shape)
+    print("Test Meta:", arr_meta_test.shape)
 
         #nochmal normalisieren über nur die  vorgeladene Datem schneller über paper
     #Dummy Daten
     #N = 32
-    #arr_images = torch.randn(N, 3, 260, 346).to(device)
+    #arr_images = torch.randn(N, 3, 260, 346).to(device) #####torch zeros machen, geladenen bilder überschreiben
     #arr_events = torch.randn(N, 3, 260, 346).to(device)
     #arr_meta= torch.randn(N, 2).to(device)
 
@@ -232,7 +255,7 @@ if (__name__ == '__main__'):
     print("Meta Beispiel:", arr_meta[0])
     #print(arr_meta) # [0, 0, 0, 0, speed]
 
-    agent = ImitationLearning(city_name=args.city_name, avoid_stopping=args.avoid_stopping, raw_data=[arr_images, arr_events, arr_meta])
+    agent = ImitationLearning(city_name=args.city_name, avoid_stopping=args.avoid_stopping, raw_data=[arr_images, arr_events, arr_meta,arr_images_test,arr_events_test, arr_meta_test])
 
     #corl = CoRL2017(args.city_name)
 
