@@ -57,7 +57,7 @@ class Mymodel(torch.nn.Module): #geändert
 
         #Fc-layer anlegen
         if self.use_fusion:
-            first_fc_in = 7680     
+            first_fc_in = 1280     
             self.frn = ResNet_fpn_fusion(
             dataset_name="ddd17",
             event_block=Bottleneck,
@@ -166,13 +166,25 @@ class Mymodel(torch.nn.Module): #geändert
         
         if self.use_fusion:
             print("FRN aktiv")
-            x = self.frn((input_image, input_event))  
+            #x = self.frn((input_image, input_event))  
             #print("FRN requires_grad:", x.requires_grad)
             #print("FRN mean/std:", x.mean().item(), x.std().item())
-            x = x[-1]  
-            # mit allen features, nicht nur dem letzten, evtl als feature vektor zusammenfügen, ggf. grösse vom ersten fc layer
-            x = torch.flatten(x, 1)
-            print("FRN output type:", type(x))
+            #x = self.frn((input_image, input_event))
+            #print(type(x))
+            #if isinstance(x, (list, tuple)):
+                #print("Anzahl Features:", len(x))
+                #f#or i, feat in enumerate(x):
+                    #print(i, feat.shape)
+            #x = x[-1]  
+            #x = torch.flatten(x, 1)
+            #print("FRN output type:", type(x))
+            features = self.frn((input_image, input_event))
+            pooled_features = []
+            for feat in features:
+                pooled = torch.mean(feat, dim=(2, 3))   # [B, 256]
+                pooled_features.append(pooled)
+
+            x = torch.cat(pooled_features, dim=1)       # [B, 1280]
         else:
             print("CIL aktiv")
             x = input_image
@@ -183,6 +195,7 @@ class Mymodel(torch.nn.Module): #geändert
 
             print("flatten requires_grad:", x.requires_grad)
             print("flatten mean/std:", x.mean().item(), x.std().item())
+
         #if self.use_fusion:
             #x_rgb = input_image
             #x_evt = input_event
@@ -235,6 +248,9 @@ class Mymodel(torch.nn.Module): #geändert
         return branch_output
 
 # end pytorch
+
+
+
 
 
 
